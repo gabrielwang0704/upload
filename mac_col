@@ -7,24 +7,20 @@ output reg signed [bw_psum-1:0] out;
 input  signed [pr*bw-1:0] q_in;
 output signed [pr*bw-1:0] q_out;
 input  clk, reset;
-input  [1:0] i_inst; // [1]: execute, [0]: load 
+input  [1:0] i_inst;
 output [1:0] o_inst;  
 
-// Pipeline registers
-reg    [1:0] inst_q1, inst_q2;  // Two-stage instruction pipeline
+reg    [1:0] inst_q1, inst_q2;
 reg   signed [pr*bw-1:0] query_q; 
-reg   signed [pr*bw-1:0] key_q;  // Key storage (not fully pipelined as it's reused)
+reg   signed [pr*bw-1:0] key_q;
 
-// Intermediate signals
 wire  signed [bw_psum-1:0] psum;
 
-// Assign outputs from final pipeline stage
 assign o_inst = inst_q2;
 assign q_out  = query_q;
 
-// MAC computation unit
 mac_16in mac_16in_instance (
-    .a(query_q1), 
+    .a(query_q), 
     .b(key_q),
     .clk(clk),
     .rst(reset),
@@ -38,19 +34,15 @@ always @ (posedge clk) begin
     out <= 0;
   end
   else begin
-    // First pipeline stage
     inst_q1 <= i_inst;
     query_q <= q_in;
     
-    // Handle key loading (when first stage has load instruction)
     if (inst_q1[0]) begin
-      key_q <= query_q;  // Load key from previous query value
+      key_q <= query_q;  
     end
     
-    // Second pipeline stage
     inst_q2 <= inst_q1;
     
-    // Final output stage
     out <= psum;
   end
 end
