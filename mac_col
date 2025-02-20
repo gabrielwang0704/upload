@@ -1,11 +1,11 @@
-module mac_col (
-    input clk,
-    input reset,
-    output reg signed [bw_psum-1:0] out,
-    input signed [pr*bw-1:0] q_in,
+// Pipelined MAC Column Module
+module mac_col_pipelined (
+    input clk, reset,
+    input [pr*bw-1:0] q_in,
+    input [1:0] i_inst, // Instruction input: [1] execute, [0] load
+    output reg [1:0] o_inst,  
     output reg signed [pr*bw-1:0] q_out,
-    input [1:0] i_inst, // Instruction bits: [1]: execute, [0]: load
-    output reg [1:0] o_inst
+    output reg signed [bw_psum-1:0] out
 );
 
 parameter bw = 8;
@@ -13,35 +13,56 @@ parameter bw_psum = 2*bw+4;
 parameter pr = 16;
 parameter col_id = 0;
 
-reg load_ready_q;
 reg [1:0] inst_q;
-reg signed [pr*bw-1:0] query_q;
-reg signed [pr*bw-1:0] key_q;
+reg load_ready_q;
+reg signed [pr*bw-1:0] query_q, key_q;
 wire signed [bw_psum-1:0] psum;
 
-mac_16in mac_16in_instance (
-    .a(query_q),
-    .b(key_q),
-    .out(psum)
+// Instance of the MAC operation module
+mac_16in  mac_16in_instance (
+        .a(query_q), 
+        .b(key_q),
+	.out(psum)
 );
 
-always @(posedge clk) begin
+// Pipeline register for the output of MAC operation
+reg signed [bw_psum-1:0] psum_q;
+
+// First pipeline stage: Instruction and Data Loading
+always @(posedge clk or posedge reset) begin
     if (reset) begin
-        out <= 0;
-        q_out <= 0;
+        load_ready_q <= 1;
         query_q <= 0;
         key_q <= 0;
-        load_ready_q <= 1;
         inst_q <= 0;
     end else begin
-        if (i_inst[0]) begin // Load operation
+        if (i_inst[0]) begin // Load instruction
             query_q <= q_in;
             key_q <= q_in;
+            load_ready_q <= 0;
         end
-        if (i_inst[1]) begin // Execute operation
-            out <= psum; // Update output only on execute
+        inst_q <= i_inst; // Forward the instruction state
+    end
+end
+
+// Second pipeline stage: Execute and Output Results
+always @(posedge clk or posedge reset) begin
+    if (reset) begin
+        psum_q <= 0;
+        out <= 0;
+    end else begin
+        if (inst_q[1]) begin // Execute instruction
+            psum_q <= psum; // Load the result from the MAC unit
         end
-        inst_q <= i_inst; // Update instruction output
+        out <= psum_q; // Output the result
+    end
+end
+
+// Output the current instruction state
+always @(posedge clk or posedge reset) begin
+    if (reset) begin
+        o_inst <= 0;
+    end else begin
         o_inst <= inst_q;
     end
 end
